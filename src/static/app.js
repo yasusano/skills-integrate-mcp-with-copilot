@@ -2,7 +2,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const activitiesList = document.getElementById("activities-list");
   const activitySelect = document.getElementById("activity");
   const signupForm = document.getElementById("signup-form");
+  const loginForm = document.getElementById("login-form");
+  const logoutButton = document.getElementById("logout-button");
+  const authMessage = document.getElementById("auth-message");
   const messageDiv = document.getElementById("message");
+  let isTeacher = false;
 
   // Function to fetch activities from API
   async function fetchActivities() {
@@ -28,10 +32,12 @@ document.addEventListener("DOMContentLoaded", () => {
               <h5>Participants:</h5>
               <ul class="participants-list">
                 ${details.participants
-                  .map(
-                    (email) =>
-                      `<li><span class="participant-email">${email}</span><button class="delete-btn" data-activity="${name}" data-email="${email}">❌</button></li>`
-                  )
+                  .map((email) => {
+                    const unregisterButton = isTeacher
+                      ? `<button class="delete-btn" data-activity="${name}" data-email="${email}" type="button">Remove</button>`
+                      : "";
+                    return `<li><span class="participant-email">${email}</span>${unregisterButton}</li>`;
+                  })
                   .join("")}
               </ul>
             </div>`
@@ -66,6 +72,46 @@ document.addEventListener("DOMContentLoaded", () => {
       console.error("Error fetching activities:", error);
     }
   }
+
+  async function updateAuthState() {
+    const response = await fetch("/auth/me");
+    const user = await response.json();
+    isTeacher = user.authenticated;
+    loginForm.classList.toggle("hidden", isTeacher);
+    signupForm.classList.toggle("hidden", !isTeacher);
+    logoutButton.classList.toggle("hidden", !isTeacher);
+    authMessage.textContent = isTeacher
+      ? `Logged in as teacher: ${user.username}`
+      : "Students can view activities. Teachers can log in to manage registrations.";
+  }
+
+  loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const response = await fetch("/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: document.getElementById("username").value,
+        password: document.getElementById("password").value,
+      }),
+    });
+    const result = await response.json();
+    if (response.ok) {
+      loginForm.reset();
+      await updateAuthState();
+      fetchActivities();
+    } else {
+      messageDiv.textContent = result.detail || "Unable to log in";
+      messageDiv.className = "error";
+      messageDiv.classList.remove("hidden");
+    }
+  });
+
+  logoutButton.addEventListener("click", async () => {
+    await fetch("/auth/logout", { method: "POST" });
+    await updateAuthState();
+    fetchActivities();
+  });
 
   // Handle unregister functionality
   async function handleUnregister(event) {
@@ -156,5 +202,5 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Initialize app
-  fetchActivities();
+  updateAuthState().then(fetchActivities);
 });
